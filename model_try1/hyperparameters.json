@@ -1,0 +1,11 @@
+{
+    "learning_rate": 0.003,
+    "gamma": 0.9,
+    "lmbda": 0.9,
+    "eps_clip": 0.2,
+    "K_epoch": 100,
+    "rollout_len": 10,
+    "buffer_size": 10,
+    "minibatch_size": 32,
+    "hidden_dim": 64
+}
