@@ -136,7 +136,7 @@ if __name__ == "__main__":
         if done:
             obs, info = env.reset()
             obs = obs.flatten()
-            print(f"Episode: {i + 1}, Reward: {reward}, Done: {done}, Info: {info}")
+            print(f"Episode: {i + 1}, Reward: {reward}, Done: {done}, Info: {info}") #! Added info, while printing info it is showing "policy" as "EnvInputpolicy", but when ran it in debug mode it is using above PPO class for training.
         if i % 100 == 0:
             agent.train_net()
             # Save trained model

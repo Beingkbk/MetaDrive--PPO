@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# ! Temporarily directly using environment in policy file "did not imported this environment in policy.py"
 """
 This file illustrate how to use top-down renderer to provide observation in form of multiple channels of semantic maps.
 

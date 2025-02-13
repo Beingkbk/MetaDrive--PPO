@@ -1,3 +1,7 @@
+### !!! This script is for testing the trained model. !!! ###
+### !!! Ensure that the trained model is saved in the same directory as this script. !!! ###
+### ! Facing few issues with the model loading, so the model is not loaded and tested. ! ###
+
 import torch
 from metadrive.envs.top_down_env import TopDownMetaDrive
 from policy import PPO  # Ensure policy.py contains your PPO implementation
