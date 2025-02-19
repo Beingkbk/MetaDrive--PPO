@@ -5,7 +5,8 @@ import torch.optim as optim
 from torch.distributions import Normal
 from metadrive.envs.top_down_env import TopDownMetaDrive
 import numpy as np
-import json 
+import json
+import matplotlib.pyplot as plt 
 
 # Load hyperparameters from JSON file
 def load_hyperparameters(filepath="D:\PPO\PPO_project_extended\MetaDrive-PPO-Agent\ppo_model_try8\hyperparameters.json"):
@@ -111,10 +112,11 @@ if __name__ == "__main__":
         dict(
             map="SSSS",
             traffic_density=0.1,
-            num_scenarios=100,
+            num_scenarios=10,
             start_seed=np.random.randint(0, 1000),
         )
     )
+    Rewards_plt = []
     agent = PPO()
     obs, _ = env.reset()
     obs = obs.flatten()  # Flatten observation
@@ -131,16 +133,28 @@ if __name__ == "__main__":
         agent.put_data((obs, action, reward, next_obs, log_prob, done))
         obs = next_obs
 
-        env.render(mode="top_down", text={"Quit": "ESC"}, film_size=(2000, 2000))
+        # env.render(mode="top_down", text={"Quit": "ESC"}, film_size=(2000, 2000))
         
         if done:
             obs, info = env.reset()
             obs = obs.flatten()
             print(f"Episode: {i + 1}, Reward: {reward}, Done: {done}, Info: {info}") #! Added info, while printing info it is showing "policy" as "EnvInputpolicy", but when ran it in debug mode it is using above PPO class for training.
+            
         if i % 100 == 0:
             agent.train_net()
             # Save trained model
             torch.save(agent.state_dict(), "ppo_trained_model.pth")
             print("Model saved successfully.")
+            Rewards_plt.append(reward)
+            #actor_losses= np.append(agent.loss)    
     env.close()
     print("Training finished.")
+
+
+plt.plot(Rewards_plt[:], label="Rewards")
+plt.title("Rewards vs Epoch")
+plt.xlabel("Epoch")
+plt.ylabel("Rewards")
+plt.legend()
+plt.show()
+plt.savefig("Rewards_vs_Epoch.png")
