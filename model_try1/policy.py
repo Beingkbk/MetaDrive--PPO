@@ -147,8 +147,8 @@ class PPO(nn.Module):
 if __name__ == "__main__":
     env = TopDownMetaDrive(
         dict(
-            map="SSSS",
-            traffic_density=0.1,
+            map="S",  # Simple straight road
+            traffic_density=0.0,  # No traffic
             num_scenarios=10,
             start_seed=np.random.randint(0, 1000),
         )
@@ -156,29 +156,87 @@ if __name__ == "__main__":
     writer = SummaryWriter("runs/MetaDrive_PPO")
     rewards_list = []
     agent = PPO().to(device)
-    obs, _ = env.reset()
-    obs = np.transpose(obs, (2, 0, 1))
     
-    for i in range(10000):
-        mu, std = agent.pi(torch.tensor(obs, dtype=torch.float, device=device).unsqueeze(0))
-        dist = Normal(mu, std)
-        action = dist.sample().squeeze(0).detach().cpu().numpy()
-        next_obs, reward, done, _, _ = env.step(action)
-        next_obs = np.transpose(next_obs, (2, 0, 1))
-        log_prob = dist.log_prob(torch.tensor(action, dtype=torch.float, device=device)).sum().item()
+    timeout_steps = 100000 # Timeout after 10,000 steps (to prevent infinite loops)
 
-        agent.put_data((obs, action, reward, next_obs, log_prob, done))
-        obs = next_obs
-        env.render(mode="top_down", text={"Quit": "ESC"}, film_size=(2000, 2000))
-        writer.add_scalar("Reward", reward, i)
+    for i in range(10000):  # Increased training episodes
+        episode_reward = 0  # Track total reward for the episode
+        episode_steps = 0  # Track number of steps in the episode
+        done = False
 
-        if done:
-            obs, _ = env.reset()
-            obs = np.transpose(obs, (2, 0, 1))
-            print(f"Episode: {i + 1}, Reward: {reward}")
+        # Reset the environment
+        obs, _ = env.reset()
+        obs = np.transpose(obs, (2, 0, 1))  # Change shape to (C, H, W)
 
+        while not done:
+            # Check if the episode has timed out
+            if episode_steps >= timeout_steps:
+                print("Episode timed out. Resetting environment.")
+                done = True
+                break
+
+            # Get the action from the agent
+            mu, std = agent.pi(torch.tensor(obs, dtype=torch.float, device=device).unsqueeze(0))
+            dist = Normal(mu, std)
+            action = dist.sample().squeeze(0).detach().cpu().numpy()
+
+            # Take the action in the environment
+            next_obs, reward, done, _, info = env.step(action)
+
+            # Adjust rewards
+            if done and info["arrive_dest"]:
+                reward += 100  # Large reward for reaching the destination
+
+            # Check if the agent is off the road using env.agent
+            if not env.agent.on_lane:  # Use the agent's on_lane property
+                reward -= 5  # Penalty for going off the road
+                print("Agent is off the road! Penalty applied.")  # Debug print statement
+                done = True  # Manually set done to True
+
+            # Add a reward for maintaining a higher speed
+            agent_speed = env.agent.speed  # Speed in m/s
+            speed_reward = 0.1 * agent_speed  # Reward proportional to speed
+            reward += speed_reward
+
+            # Add a reward for staying on the road
+            if env.agent.on_lane:
+                reward += 0.1  # Small reward for staying on the road
+
+            # Add a reward for making progress toward the destination
+            distance_to_dest = np.linalg.norm(env.agent.position - env.agent.navigation.final_lane.end)
+            progress_reward = -0.01 * distance_to_dest  # Reward for reducing distance to destination
+            reward += progress_reward
+
+            # Log agent's actions and state
+            print(f"Episode: {i + 1}, Steps: {episode_steps}, Total Reward: {episode_reward}")
+            print(f"Agent Position: {env.agent.position}, Speed: {env.agent.speed}, Distance to Destination: {distance_to_dest}")
+            print(f"Steering: {action[0]}, Throttle: {action[1]}")
+
+            # Update episode reward and steps
+            episode_reward += reward
+            episode_steps += 1
+
+            # Store the transition in the agent's memory
+            next_obs = np.transpose(next_obs, (2, 0, 1))  # Change shape to (C, H, W)
+            log_prob = dist.log_prob(torch.tensor(action, dtype=torch.float, device=device)).sum().item()
+            agent.put_data((obs, action, reward, next_obs, log_prob, done))
+
+            # Render the environment (optional)
+            #env.render(mode="top_down", text={"Quit": "ESC"}, film_size=(2000, 2000))
+
+            # Update the observation
+            obs = next_obs
+
+        # Log episode details
+        print(f"Episode: {i + 1}, Steps: {episode_steps}, Total Reward: {episode_reward}")
+        writer.add_scalar("Episode Reward", episode_reward, i)
+        writer.add_scalar("Episode Steps", episode_steps, i)
+
+        # Train the agent after each episode
+        agent.train_net()
+
+        # Save the model periodically
         if i % 100 == 0:
-            agent.train_net()
             torch.save(agent.state_dict(), "ppo_trained_model.pth")
 
     env.close()
