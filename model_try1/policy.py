@@ -147,6 +147,7 @@ class PPO(nn.Module):
 if __name__ == "__main__":
     env = TopDownMetaDrive(
         dict(
+            use_render=True,  # render the environment
             map="S",  # Simple straight road
             traffic_density=0.0,  # No traffic
             num_scenarios=10,
@@ -222,7 +223,7 @@ if __name__ == "__main__":
             agent.put_data((obs, action, reward, next_obs, log_prob, done))
 
             # Render the environment (optional)
-            #env.render(mode="top_down", text={"Quit": "ESC"}, film_size=(2000, 2000))
+            env.render(mode="top_down", text={"Quit": "ESC"}, film_size=(2000, 2000))
 
             # Update the observation
             obs = next_obs

@@ -61,7 +61,7 @@ if __name__ == "__main__":
         dict(
             # We also support using two renderer (Panda3D renderer and Pygame renderer) simultaneously. You can
             # try this by uncommenting next line.
-            # use_render=True,
+            use_render=True,
 
             # You can also try to uncomment next line with "use_render=True", so that you can control the ego vehicle
             # with keyboard in the main window.
