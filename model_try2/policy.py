@@ -12,7 +12,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 # Argument parser for flexible hyperparameter loading
 parser = argparse.ArgumentParser()
-parser.add_argument("--config", type=str, default="model_try1\hyperparameters.json")
+parser.add_argument("--config", type=str, default="model_try1/hyperparameters.json")
 args = parser.parse_args()
 
 # Load hyperparameters from JSON file
@@ -70,17 +70,19 @@ class PPO(nn.Module):
         self.fc_v = nn.Linear(linear_input_size, 1)
 
         self.optimizer = optim.Adam(self.parameters(), lr=learning_rate)
-        self.data = []  # ✅ Fix: Initialize data buffer here
+        self.data = []  # Fix: Initialize data buffer here
     def put_data(self, transition):
         self.data.append(transition)  # Now self.data exists and won't cause an error
     def pi(self, x):
         x = F.relu(self.bn1(self.conv1(x)))  # Now bn1 exists
         x = F.relu(self.bn2(self.conv2(x)))
         x = F.relu(self.bn3(self.conv3(x)))
+        self.dropout = nn.Dropout(p=0.2)
+
         
         x = x.view(x.size(0), -1)
         mu = 2.0 * torch.tanh(self.fc_mu(x))
-        std = F.softplus(self.fc_std(x)) + 0.1
+        std = F.softplus(self.fc_std(x)) + 0.5
         return mu, std
         
     def v(self, x):
@@ -160,14 +162,19 @@ if __name__ == "__main__":
     
     timeout_steps = 100000 # Timeout after 10,000 steps (to prevent infinite loops)
 
-    for i in range(1):  # Increased training episodes
+    for i in range(10000):  # Increased training episodes
         episode_reward = 0  # Track total reward for the episode
         episode_steps = 0  # Track number of steps in the episode
         done = False
 
         # Reset the environment
         obs, _ = env.reset()
-        obs = np.transpose(obs, (2, 0, 1))  # Change shape to (C, H, W)
+        obs = np.transpose(obs, (2, 0, 1))
+        episode_reward = 0
+        done = False
+
+        # Initialize prev_distance before entering the loop
+        prev_distance = np.linalg.norm(env.agent.position - env.agent.navigation.final_lane.end)
 
         while not done:
             # Check if the episode has timed out
@@ -177,56 +184,59 @@ if __name__ == "__main__":
                 break
 
             # Get the action from the agent
-            mu, std = agent.pi(torch.tensor(obs, dtype=torch.float, device=device).unsqueeze(0))
-            dist = Normal(mu, std)
-            action = dist.sample().squeeze(0).detach().cpu().numpy()
+            with torch.no_grad():
+                mu, std = agent.pi(torch.tensor(obs, dtype=torch.float, device=device).unsqueeze(0))
+                dist = Normal(mu, std)
+                action = dist.sample().squeeze(0).detach().cpu().numpy()
 
-            # Take the action in the environment
-            next_obs, reward, done, _, info = env.step(action)
+                # Take the action in the environment
+                next_obs, reward, done, _, info = env.step(action)
 
-            # Adjust rewards
-            if done and info["arrive_dest"]:
-                reward += 100  # Large reward for reaching the destination
+                # Adjust rewards
+                if done and info["arrive_dest"]:
+                    reward += 100  # Large reward for reaching the destination
 
-            # Check if the agent is off the road using env.agent
-            if not env.agent.on_lane:  # Use the agent's on_lane property
-                reward -= 5  # Penalty for going off the road
-                print("Agent is off the road! Penalty applied.")  # Debug print statement
-                done = True  # Manually set done to True
+                # Check if the agent is off the road using env.agent
+                if not env.agent.on_lane:  # Use the agent's on_lane property
+                    reward -= 5  # Penalty for going off the road
+                    print("Agent is off the road! Penalty applied.")  # Debug print statement
+                    done = True  # Manually set done to True
 
-            # Add a reward for maintaining a higher speed
-            agent_speed = env.agent.speed  # Speed in m/s
-            speed_reward = 0.1 * agent_speed  # Reward proportional to speed
-            reward += speed_reward
+                # Add a reward for maintaining a higher speed
+                agent_speed = env.agent.speed  # Speed in m/s
+                speed_reward = 0.1 * agent_speed  # Reward proportional to speed
+                reward += speed_reward
 
-            # Add a reward for staying on the road
-            if env.agent.on_lane:
-                reward += 0.1  # Small reward for staying on the road
+                # Add a reward for staying on the road
+                if env.agent.on_lane:
+                    reward += 0.1  # Small reward for staying on the road
 
-            # Add a reward for making progress toward the destination
-            distance_to_dest = np.linalg.norm(env.agent.position - env.agent.navigation.final_lane.end)
-            progress_reward = -0.01 * distance_to_dest  # Reward for reducing distance to destination
-            reward += progress_reward
+                # Add a reward for making progress toward the destination
+                distance_to_dest = np.linalg.norm(env.agent.position - env.agent.navigation.final_lane.end)
+                progress_reward = 0.1 * (prev_distance - distance_to_dest)# Reward for reducing distance to destination
+                reward += progress_reward
+                prev_distance = distance_to_dest
 
-            # Log agent's actions and state
-            print(f"Episode: {i + 1}, Steps: {episode_steps}, Total Reward: {episode_reward}")
-            print(f"Agent Position: {env.agent.position}, Speed: {env.agent.speed}, Distance to Destination: {distance_to_dest}")
-            print(f"Steering: {action[0]}, Throttle: {action[1]}")
 
-            # Update episode reward and steps
-            episode_reward += reward
-            episode_steps += 1
+                # Log agent's actions and state
+                print(f"Episode: {i + 1}, Steps: {episode_steps}, Total Reward: {episode_reward}")
+                print(f"Agent Position: {env.agent.position}, Speed: {env.agent.speed}, Distance to Destination: {distance_to_dest}")
+                print(f"Steering: {action[0]}, Throttle: {action[1]}")
 
-            # Store the transition in the agent's memory
-            next_obs = np.transpose(next_obs, (2, 0, 1))  # Change shape to (C, H, W)
-            log_prob = dist.log_prob(torch.tensor(action, dtype=torch.float, device=device)).sum().item()
-            agent.put_data((obs, action, reward, next_obs, log_prob, done))
+                # Update episode reward and steps
+                episode_reward += reward
+                episode_steps += 1
 
-            # Render the environment (optional)
-            #env.render(mode="top_down", text={"Quit": "ESC"}, film_size=(2000, 2000))
+                # Store the transition in the agent's memory
+                next_obs = np.transpose(next_obs, (2, 0, 1))  # Change shape to (C, H, W)
+                log_prob = dist.log_prob(torch.tensor(action, dtype=torch.float, device=device)).sum().item()
+                agent.put_data((obs, action, reward, next_obs, log_prob, done))
 
-            # Update the observation
-            obs = next_obs
+                # Render the environment (optional)
+                #env.render(mode="top_down", text={"Quit": "ESC"}, film_size=(2000, 2000))
+
+                # Update the observation
+                obs = next_obs
 
         # Log episode details
         print(f"Episode: {i + 1}, Steps: {episode_steps}, Total Reward: {episode_reward}")
@@ -235,6 +245,8 @@ if __name__ == "__main__":
 
         # Train the agent after each episode
         agent.train_net()
+
+
         Exp_no = 1 # Experiment number
         # Save the model periodically
         if i % 100 == 0:

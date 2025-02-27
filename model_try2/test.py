@@ -54,7 +54,6 @@ def test_model(model_path, num_episodes=10):
     # Initialize the environment
     env = TopDownMetaDrive(
         dict(
-            use_render=True,
             map="SSSS",
             traffic_density=0.1,
             num_scenarios=10,
@@ -96,5 +95,5 @@ def test_model(model_path, num_episodes=10):
 
 # Run the test
 if __name__ == "__main__":
-    model_path = "D:\PPO\Extended_project\ppo_trained_model.pth"  # Path to your trained model
-    test_model(model_path, num_episodes=10)  # Test for 10 episodes
+    model_path = "ppo_trained_model.pth"  # Path to your trained model
+    test_model(model_path, num_episodes=30)  # Test for 10 episodes
