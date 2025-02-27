@@ -160,9 +160,9 @@ if __name__ == "__main__":
     rewards_list = []
     agent = PPO().to(device)
     
-    timeout_steps = 100000 # Timeout after 10,000 steps (to prevent infinite loops)
+    timeout_steps = 10000 # Timeout after 10,000 steps (to prevent infinite loops)
 
-    for i in range(10000):  # Increased training episodes
+    for i in range(15000):  # Increased training episodes
         episode_reward = 0  # Track total reward for the episode
         episode_steps = 0  # Track number of steps in the episode
         done = False
